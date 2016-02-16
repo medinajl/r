@@ -1,0 +1,670 @@
+\documentclass[a4paper]{article}
+\usepackage[sc]{mathpazo}
+\usepackage[latin1]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{verbose,tmargin=2.5cm,bmargin=2.5cm,lmargin=2.5cm,rmargin=2.5cm}
+\setcounter{secnumdepth}{2}
+\setcounter{tocdepth}{2}
+\usepackage{url}
+\usepackage[unicode=true,pdfusetitle,
+ bookmarks=true,bookmarksnumbered=true,bookmarksopen=true,bookmarksopenlevel=2,
+ breaklinks=false,pdfborder={0 0 1},backref=false,colorlinks=false]
+ {hyperref}
+\hypersetup{
+ pdfstartview={XYZ null null 1}}
+
+\begin{document}
+%\SweaveOpts{concordance=TRUE}
+%\SweaveOpts{concordance=TRUE}
+%\SweaveOpts{concordance=TRUE}
+
+
+<<define_caso, echo=FALSE, warning=FALSE>>=
+caso <- 'General'
+@
+
+
+
+\title{Análisis de consumos en la línea en 55 kV de la factoría XXX en Santander. \textbf{(CASO \Sexpr{caso})}}
+
+
+\author{GTEA. Universidad de Cantabria}
+
+\maketitle
+
+\section{Información de contacto}
+
+\begin{itemize}
+  \item Mario Mañana Canteli 
+  \item Dpto. Ing. Eléctrica y Energética
+  \item Universidad de Cantabria
+  \item email: mananam@unican.es
+  \item teléfono: 942201378 / 628091138
+\end{itemize}
+
+\section{Introducción}
+
+<<setup, include=FALSE, results="hide", cache=FALSE>>=
+library(knitr)
+# set global chunk options
+opts_chunk$set(comment=NA,  fig.path='figure/minimal-', fig.align='center', fig.show='hold')
+hook_output <- knit_hooks$get("output")
+knit_hooks$set(output=function(x, options)
+{
+  if (options$results != "asis")
+  {
+    # Split string into separate lines.
+    x <- unlist(stringr::str_split(x, "nn"))
+    # Truncate each line to length specified.
+    if (!is.null(m <- options$out.truncate))
+    {
+      len <- nchar(x)
+      x[len>m] <- paste0(substr(x[len>m], 0, m-3), "...")
+    }
+    # Paste lines back together.
+    x <- paste(x, collapse="nn")
+    # Continue with any other output hooks
+  }
+  hook_output(x, options)
+})
+@
+
+
+<<setup_2, echo = FALSE, results= 'hide', message = FALSE>>=
+require(xtable)
+#require(PASWR)
+options(width = 98)
+@
+
+<<librerias, echo=FALSE, message=FALSE>>=
+library("ggplot2")
+@
+
+<<funciones_1, echo=FALSE, message=FALSE>>=
+# Ilímite
+Ilim = 560
+
+# Ajuste de la protección
+k <- 0.14
+alpha <- 0.02
+dial <- 0.08
+Ia <- Ilim
+
+
+# Función de calculo de tiempo inverso de disparo
+td<-function(I, Ia=600, k=0.14, alpha=0.02, dial=0.08) {
+
+  #Ia <- 600.0 # Iarranque
+    
+  td <- dial*k/(((I/Ia)^alpha)-1)
+
+  return(td)
+}
+
+@
+
+<<mod_factoria, echo=FALSE, message=FALSE>>=
+
+# Información general sobre el caso a simular
+
+# Incremento de P [kW]
+Pinc = 6000*0.97
+Qinc = 6000*(sqrt(1-.97*0.97))
+
+# Tiempo mínimo necesario para operar del deslastre de carga en 55 kV
+tmin <- 30
+
+
+@
+
+
+
+<<def_fechas, echo=FALSE, results='hide', warning=FALSE>>=
+
+## Carga de datos
+# Ruta al listado de ficheros de medida
+## Carga de datos
+# Ruta al listado de ficheros de medida
+ficheros <- c("C:\\mario\\docencia\\reproducible_research\\r\\r_report_total_01_datos.txt",
+              "C:\\mario\\docencia\\reproducible_research\\r\\r_report_total_02_datos.txt")
+
+N <- length( ficheros)
+fichero = ficheros[1]
+datos <- read.table( fichero, header = TRUE, sep = ";", quote = "\"'", dec = ".")
+Pp <- datos$Sitio1TOTP.kW.Máx.kW
+a <- Pp[ !is.na(Pp)]
+contador <- length( Pp)
+for (i in 2:N) {
+  print(i)
+  fichero = ficheros[i]
+  datos <- read.table( fichero, header = TRUE, sep = ";", quote = "\"'", dec = ".")
+  contador <- contador + length( datos$Sitio1TOTP.kW.Máx.kW)
+  print(contador)
+}
+
+I1a <- rep( NA, contador)
+I1b <- rep( NA, contador)
+I1c <- rep( NA, contador)
+I2a <- rep( NA, contador)
+I2b <- rep( NA, contador)
+I2c <- rep( NA, contador)
+P1 <- rep( NA, contador)
+Q1 <- rep( NA, contador)
+P2 <- rep( NA, contador)
+Q2 <- rep( NA, contador)
+S <- rep( NA, contador)
+Vl <- rep( NA, contador)
+Il <- rep( NA, contador)
+
+
+tiempo <- as.POSIXlt( rep( NA, contador))
+
+indice <- 1
+for (i in 1:N) {
+  print(i)
+  fichero = ficheros[i]
+  print( fichero)
+  datos <- read.table( fichero, header = TRUE, sep = ";", quote = "\"'", dec = ".")
+  P1_aux <- datos$Sitio1TOTP.kW.Máx.kW
+  print( "**********************")
+  P1_aux_size <- length( P1_aux)
+  auxiliar <- P1_aux[ !is.na(P1_aux)]
+  print( "P1")
+  print( c(P1_aux_size, P1_aux_size-length( auxiliar)))
+
+  Q1_aux <- datos$Sitio1TOTQ.Fnd.kVAR.Máx.kVAR
+  print( "**********************")
+  Q1_aux_size <- length( Q1_aux)
+  auxiliar <- Q1_aux[ !is.na(Q1_aux)]
+  print( "Q1")
+  print( c(Q1_aux_size, Q1_aux_size-length( auxiliar)))
+
+  P2_aux <- datos$Sitio2TOTP.kW.Máx.kW
+  print( "**********************")
+  P2_aux_size <- length( P2_aux)
+  auxiliar <- P2_aux[ !is.na(P2_aux)]
+  print( "P2")
+  print( c(P2_aux_size, P2_aux_size-length( auxiliar)))
+
+  Q2_aux <- datos$Sitio2TOTQ.Fnd.kVAR.Máx.kVAR
+  print( "**********************")
+  Q2_aux_size <- length( Q2_aux)
+  auxiliar <- Q2_aux[ !is.na(Q2_aux)]
+  print( "Q2")
+  print( c(Q2_aux_size, Q2_aux_size-length( auxiliar)))
+
+  I1a_aux <- datos$Sitio1AIrmsMáx.Amperios.
+  print( "**********************")
+  I1a_aux_size <- length( I1a_aux)
+  auxiliar <- I1a_aux[ !is.na( I1a_aux)]
+  print( "I1a")
+  print( c(I1a_aux_size, I1a_aux_size-length( auxiliar)))
+  
+  I1b_aux <- datos$Sitio1BIrmsMáx.Amperios.
+  print( "**********************")
+  I1b_aux_size <- length( I1b_aux)
+  auxiliar <- I1b_aux[ !is.na( I1b_aux)]
+  print( "I1b")
+  print( c(I1b_aux_size, I1b_aux_size-length( auxiliar)))
+
+  I1c_aux <- datos$Sitio1CIrmsMáx.Amperios.
+  print( "**********************")
+  I1c_aux_size <- length( I1c_aux)
+  auxiliar <- I1c_aux[ !is.na( I1c_aux)]
+  print( "I1c")
+  print( c(I1c_aux_size, I1c_aux_size-length( auxiliar)))
+
+  
+  I2a_aux <- datos$Sitio2AIrmsMáx.Amperios.
+  print( "**********************")
+  I2a_aux_size <- length( I2a_aux)
+  auxiliar <- I2a_aux[ !is.na( I2a_aux)]
+  print( "I2a")
+  print( c(I2a_aux_size, I2a_aux_size-length( auxiliar)))
+  
+  I2b_aux <- datos$Sitio2BIrmsMáx.Amperios.
+  print( "**********************")
+  I2b_aux_size <- length( I2b_aux)
+  auxiliar <- I2b_aux[ !is.na( I2b_aux)]
+  print( "I2b")
+  print( c(I2b_aux_size, I2b_aux_size-length( auxiliar)))
+
+  I2c_aux <- datos$Sitio2CIrmsMáx.Amperios.
+  print( "**********************")
+  I2c_aux_size <- length( I2c_aux)
+  auxiliar <- I2c_aux[ !is.na( I2c_aux)]
+  print( "I2c")
+  print( c(I2c_aux_size, I2c_aux_size-length( auxiliar)))
+
+  Vl_aux <- datos$Sitio2A.BVrmsMáx.Voltios
+  print( "**********************")
+  Vl_aux_size <- length( Vl_aux)
+  auxiliar <- Vl_aux[ !is.na( Vl_aux)]
+  print( "Vl")
+  print( c( Vl_aux_size, Vl_aux_size-length( auxiliar)))
+  
+  tiempo_aux <- c( strptime(datos$Datos.X, "%d/%m/%Y %H:%M:%S"))
+  print( "**********************")
+  tiempo_aux_size <- length( tiempo_aux)
+  auxiliar <- tiempo_aux[ !is.na(tiempo_aux)]
+  print( "tiempo")
+  print( c(tiempo_aux_size, tiempo_aux_size-length( auxiliar)))
+
+  N_auxi <- length( P1_aux)
+  
+  P1[indice:(indice+N_auxi-1)] <- P1_aux[ 1: N_auxi]  
+  Q1[indice:(indice+N_auxi-1)] <- Q1_aux[ 1: N_auxi]    
+  P2[indice:(indice+N_auxi-1)] <- P2_aux[ 1: N_auxi]    
+  Q2[indice:(indice+N_auxi-1)] <- Q2_aux[ 1: N_auxi]  
+  Vl[indice:(indice+N_auxi-1)] <- Vl_aux[ 1: N_auxi]  
+  
+  I1a[indice:(indice+N_auxi-1)] <- I1a_aux[ 1: N_auxi]  
+  I1b[indice:(indice+N_auxi-1)] <- I1b_aux[ 1: N_auxi]  
+  I1c[indice:(indice+N_auxi-1)] <- I1c_aux[ 1: N_auxi]  
+  I2a[indice:(indice+N_auxi-1)] <- I2a_aux[ 1: N_auxi]  
+  I2b[indice:(indice+N_auxi-1)] <- I2b_aux[ 1: N_auxi]  
+  I2c[indice:(indice+N_auxi-1)] <- I2c_aux[ 1: N_auxi]  
+  
+  
+  tiempo[indice:(indice+N_auxi-1)] <- tiempo_aux[ 1: N_auxi]
+  
+  indice <- indice+N_auxi
+}
+
+
+# Calcula las potencias agregadas P y Q
+# Obtiene la potencia aparente, intensidad y factor de potencia
+P <- P1+P2
+Q <- Q1+Q2
+S <- sqrt(P*P + Q*Q)
+I <- S/(sqrt(3)*(Vl/1000))
+
+#datos <- data.frame( tiempo, P, Q, S, I, FP, Isum, Idif, ErrorP, Ip, Sp, Pp, Qp)
+datos <- data.frame( tiempo, P, Q, S, I, P1, P2, Q1, Q2, Vl)
+datosI <- data.frame( tiempo, I1a, I1b, I1c, I2a, I2b, I2c, I)
+
+
+# calcula número de valores que superan un umbral
+NI = length( I)
+Iordenada = sort( I)
+
+Iaux <- I[ I>500]
+NI500 <- length( Iaux)
+
+Iaux <- I[ I>490]
+NI490 <- length( Iaux)
+
+Iaux <- I[ I>480]
+NI480 <- length( Iaux)
+
+Iaux <- I[ I>470]
+NI470 <- length( Iaux)
+
+
+# Calcula las potencias agregadas P y Q en el nuevo escenario
+# Obtiene la potencia aparente, intensidad y factor de potencia
+Pp <- P + Pinc
+Qp <- Q + Qinc
+Sp <- sqrt(Pp*Pp + Qp*Qp)
+Ip <- Sp/(sqrt(3)*(Vl/1000))
+
+#datos <- data.frame( tiempo, P, Q, S, I, FP, Isum, Idif, ErrorP, Ip, Sp, Pp, Qp)
+datos_p <- data.frame( tiempo, Pp, Qp, Sp, Ip, I)
+
+primero <- head( datos, n=1)
+ultimo <- tail( datos, n=1)
+
+@
+
+Este documento implementa un script automático que resume los resultados principales derivados del análisis de la campaña de medidas realizada en la alimentación de 55 kV de la factoría XXX en Santander con diferentes configuraciones de fabricación en el tren de laminación. El informe ha sido generado de forma automática utilizando el software \textbf{R} con el paquete \textbf{knitr} y \LaTeX. Las medidas se realizaron utilizando dos analizadores de redes Mavowatt 40 de la firma Gossen Metrawatt con capacidad para realizar medidas según IEC 61000-4-30 clase A. Dichos analizadores fueron instalados en las dos líneas de alimentación de 55 kV de la factoria: i) tren de laminación y ii) acería. 
+
+El periodo de análisis utilizado en este informe se extiende desde el \textbf{\Sexpr{ primero$tiempo}} hasta el \textbf{\Sexpr{ ultimo$tiempo}} e incluye un total de \Sexpr{ length(P)} medidas con una resolución de 1 segundo. Dentro de este periodo de análisis se han establecido dos modos de funcionamiento (velocidad en el tren de laminación normal y reducida), aunque en este informe se considera un análisis agregado de los datos. 
+
+El cálculo de la intensidad de línea agregada se realiza utilizando la metodología siguiente:
+
+\begin{enumerate}
+  \item Se calcula la potencia activa total consumida en 55 kV como la suma de las potencias activas en las dos líneas.
+  \item Se calcula la potencia reactiva total consumida en 55 kV como la suma de las potencias reactivas en las dos líneas.
+  \item Se obtiene la potencia aparente $S_{total}=\sqrt{P_{total}^2 + Q_{total}^2}$.
+  \item Se obtiene la intensidad de línea $I_L = \frac{S_{total}}{\sqrt{3}V_L}$ considerando un escenario equilibrado. La tensión de línea $V_L$ se calcula como el promedio de las tres tensiones de línea medidas en cada periodo.
+\end{enumerate}
+
+
+\section{Resultados}
+
+<<xlim, echo=FALSE>>=
+xmin = 40000
+xmax = 50000
+@
+
+
+Este apartado analiza el comportamiento, en términos de demanda, del conjunto tren de laminación + acería conectado en 55 kV. Se busca determinar la distribución de valores de intensidad y, especialmente, su histograma de distribución en relación con el valor del rate estatico de la línea definido en \Sexpr{Ilim} A.
+
+La Figura \ref{fig:vs_P_vs_t} muestra la evolución instantánea de la potencia activa total demandada en 55 kV. La Figura \ref{fig:vs_Q_vs_t} muestra la evolución instantánea de la potencia reactiva. La Figura \ref{fig:vs_I_vs_t}  muestra la evolución de la intensidad de línea. La Figura \ref{fig:vs_histograma_P} muestra el histograma de frecuencias de la potencia activa demandada en 55 kV. La Figura \ref{fig:vs_histograma_P_z1} muestra una ampliación del histograma de frecuencias de la potencia activa para los valores de demanda entre \Sexpr{xmin/1000} y \Sexpr{xmax/1000} MW. Desde un punto de vista estadístico, los valores de potencia e intensidad responden a los índices siguientes:
+
+\begin{description}
+  \item[$P_{min}$:] \Sexpr{ round(min(datos$P)/1000,2)} MW.
+  \item[$P_{max}$:] \Sexpr{ round(max(datos$P)/1000,2)} MW.
+  \item[$P_{med}$:] \Sexpr{ round(mean(datos$P)/1000,2)} MW.
+  \item[$Percentil \, 95\%$:] \Sexpr{ round(quantile(datos$P, probs=c(0.95))/1000,2)} MW. 
+  \item[$Percentil \, 97\%$:] \Sexpr{ round(quantile(datos$P, probs=c(0.97))/1000,2)} MW. 
+  \item[$Percentil \, 99\%$:] \Sexpr{ round(quantile(datos$P, probs=c(0.99))/1000,2)} MW.
+  \item[$Percentil \, 99,99\%$:] \Sexpr{ round(quantile(datos$P, probs=c(0.9999))/1000,2)} MW.
+  \item[$I_{min}$:] \Sexpr{ round(min(datos$I),1)} A.
+  \item[$I_{max}$:] \Sexpr{ round(max(datos$I),1)} A.
+  \item[$I_{med}$:] \Sexpr{ round(mean(datos$I),1)} A.  
+\end{description}
+
+El número de valores que superan un determinado umbral son:
+
+\begin{description}
+  \item[Valores Totales:] \Sexpr{ NI}
+  \item[Valores superiores a 500 A:] \Sexpr{ NI500}
+  \item[Valores superiores a 490 A:] \Sexpr{ NI490}
+  \item[Valores superiores a 480 A:] \Sexpr{ NI480}
+  \item[Valores superiores a 470 A:] \Sexpr{ NI470}
+\end{description}
+
+
+
+
+<<vs_P_vs_t, fig.lp="fig:", dev='png' , fig.width=5, fig.height=3, fig.cap="Evolución temporal de la potencia activa total en 55 kV", fig.pos="h!", echo=FALSE, warning=FALSE>>=
+
+ggplot( datos, aes(x=tiempo, y=P)) + 
+  geom_line() +
+   #title="Evolución de la potencia activa total en 55 kV -velocidad normal-",
+  labs(x = "tiempo",
+       y = "P [kW]")
+
+@
+
+\newpage
+
+
+<<vs_Q_vs_t, fig.lp="fig:", dev='png' , fig.width=5, fig.height=3, fig.cap="Evolución temporal de la potencia reactiva total en 55 kV", fig.pos="h!", echo=FALSE, warning=FALSE>>=
+
+ggplot( datos, aes(x=tiempo, y=Q)) + 
+  geom_line() +
+  #title="Evolución de la potencia reactiva total en 55 kV -velocidad normal-",
+  labs(x = "tiempo",
+       y = "Q [kvar]")
+@
+
+
+<<vs_I_vs_t, fig.lp="fig:", dev='png' , fig.width=5, fig.height=3, fig.cap="Evolución temporal de la intensidad de línea  en 55 kV", fig.pos="h!", echo=FALSE, warning=FALSE>>=
+
+ggplot( datos, aes(x=tiempo, y=I)) + 
+  geom_line() +
+  #title="Evolución de la intensidad de línea en 55 kV -velocidad normal-",
+  labs(x = "tiempo",
+       y = "I [A]")
+@
+
+\newpage
+
+
+<<vs_histograma_P, fig.lp="fig:", dev='png' , fig.width=5, fig.height=3, fig.cap="Histograma de potencia activa  total en 55 kV", fig.pos="h!", echo=FALSE, warning=FALSE>>=
+
+p <- ggplot( datos, aes(x = P)) + 
+  geom_bar(aes(y = (..count..)/sum(..count..)), binwidth=300) +
+  #scale_y_continuous(formatter = 'percent') + 
+   #title='Histograma de potencia activa total en 55 kV -velocidad normal-',
+  labs( x='Potencia activa [kW]',
+        y='Ocurrencia')
+plot(p)
+
+# aes(y = (..count..)/sum(..count..)),
+@
+
+
+<<vs_histograma_P_z1, fig.lp="fig:", dev='png' , fig.width=5, fig.height=3, fig.cap="Histograma de potencia activa  total en 55 kV", fig.pos="h!", echo=FALSE, warning=FALSE>>=
+
+p <- ggplot( datos, aes(x = P),binwidth=10) + 
+  geom_bar() +
+  #scale_y_continuous(formatter = 'percent') + 
+  # title='Histograma de potencia activa total en 55 kV -velocidad normal-',
+  labs( x='Potencia activa [kW]',
+        y='Ocurrencia')
+p <- p + scale_x_continuous(limits=c( xmin, xmax))
+plot(p)
+
+
+# aes(y = (..count..)/sum(..count..)),
+@
+
+\newpage
+
+\section{Simulación del nuevo escenario}
+
+El nuevo escenario de consumo se simula añadiendo una potencia activa de \Sexpr{round(Pinc,1)} [kW] y una reactiva de \Sexpr{round(Qinc,1)} [kvar] constantes en el tiempo sobre los valores de P y Q agregados de aceria y tren de laminación en 55 kV. En estas condiciones, los valores significativos de demanda son:
+
+% Pp <- P1+P2+Pinc
+% Qp <- Q1+Q2+Qinc
+% Sp <- sqrt(Pp*Pp + Qp*Qp)
+% Ip <- Sp/(sqrt(3)*(Vl/1000.0))
+% datos <- data.frame( tiempo, P, Q, S, I, FP, Isum, Idif, ErrorP, Ip)
+
+\begin{description}
+  \item[$P_{new,min}$:] \Sexpr{ round(min(datos_p$Pp)/1000.0,2)} MW.
+  \item[$P_{new,max}$:] \Sexpr{ round(max(datos_p$Pp)/1000.0,2)} MW.
+  \item[$P_{new,med}$:] \Sexpr{ round(mean(datos_p$Pp)/1000.0,2)} MW.
+  \item[$Percentil \, 95\%$:] \Sexpr{ round(quantile(datos_p$Pp, probs=c(0.95))/1000.0,2)} MW. 
+  \item[$Percentil \, 97\%$:] \Sexpr{ round(quantile(datos_p$Pp, probs=c(0.97))/1000.0,2)} MW. 
+  \item[$Percentil \, 99\%$:] \Sexpr{ round(quantile(datos_p$Pp, probs=c(0.99))/1000.0,2)} MW.
+  \item[$Percentil \, 99,99\%$:] \Sexpr{ round(quantile(datos_p$Pp, probs=c(0.9999))/1000.0,2)} MW.
+  \item[$I_{lim}$:] \Sexpr{ Ilim} A.
+  \item[$I_{new,min}$:] \Sexpr{ round(min(datos_p$Ip),1)} A.
+  \item[$I_{new,max}$:] \Sexpr{ round(max(datos_p$Ip),1)} A.
+  \item[$I_{new,med}$:] \Sexpr{ round(mean(datos_p$Ip),1)} A.
+  \item[$Percentil \, 95\% \,de\, la\, I_{new}$:] \Sexpr{ round(quantile(datos_p$Ip, probs=c(0.95)),1)} A. 
+  \item[$Percentil \, 97\%\,  de\, la\, I_{new}$:] \Sexpr{ round(quantile(datos_p$Ip, probs=c(0.97)),1)} A. 
+  \item[$Percentil \, 99\%\,  de\, la\, I_{new}$:] \Sexpr{ round(quantile(datos_p$Ip, probs=c(0.99)),1)} A.
+  \item[$Percentil \, 99,99\%\,  de\, la\, I_{new}$:] \Sexpr{ round(quantile(datos_p$Ip, probs=c(0.9999)),1)} A.
+\end{description}
+
+
+La figura \ref{fig:analisis_new_I} muestra el histograma de valores de intensidad de línea en 55 kV en el escenario actual y considerando la ampliacion de potencia de \Sexpr{ round(Pinc,1)} [kW] y \Sexpr{ round(Qinc,1)} [kvar].
+
+
+<<analisis_new_I, fig.lp="fig:", dev='png' , fig.width=5, fig.height=2, fig.cap="Histograma de intensidad de linea en 55 kV en el nuevo escenario (incluyendo nueva P)", fig.pos="h!", echo=FALSE, warning=FALSE>>=
+
+p <- ggplot() + 
+  geom_density(aes(x=I, y=(..count..), fill="r", colour="r"), alpha=.3, data=datos_p, stat = "density") +
+  geom_density(aes(x=Ip,y=(..count..), fill="b", colour="b"), alpha=.3, data=datos_p, stat = "density") +
+  geom_vline(xintercept = Ilim) + 
+  scale_colour_manual(name="Escenario", values=c("r" = "red", "b"="blue"), labels=c("r"="Actual", "b"="Nuevo")) +
+  scale_fill_manual(name="Escenario", values=c("r" = "red", "b"="blue"), labels=c( "r"="Actual", "b"="Nuevo")) 
+
+p <- p + labs( x='Intensidad [A]',
+               y='Ocurrencia')
+plot(p)
+@
+
+
+
+\newpage
+\section{Análisis de la curva de disparo}
+
+El objetivo de este apartado es analizar la generación de disparos en la protección de intensidad tiempo-dependiente de Viesgo. La curva de disparo sigue la función siguiente
+
+
+\begin{equation}\label{eq:curva_disparo}
+t_{disparo}=\frac{k \cdot dial}{\left( \frac{I}{I_a} \right)^{\alpha} -1}
+\end{equation}
+
+donde:
+
+\begin{description}
+  \item[$k$:] \Sexpr{k} [s]. Constante de ajuste. 
+  \item[$dial$:] \Sexpr{dial}. Constante de ajuste del dial.
+  \item[$\alpha$:] \Sexpr{alpha}.
+  \item[$I_a$:] \Sexpr{Ia} A.  Intensidad de disparo [A].
+  \item[$I$:] Intensidad medida [A].
+  \item[$t_{disparo}$:] Tiempo de disparo en [s].
+\end{description}
+
+
+<<disparo_1, echo=FALSE, result='hide', warning=FALSE>>=
+
+#Ilim <- 520
+datosf <- datos_p[ Ip>Ilim,]
+disparo <- rep( NA, length( datos_p$Ip))
+alarma <- rep( NA, length( datos_p$Ip))
+
+
+# 0.- Operación normal
+# 1.- Warning (Temporizador protección activado)
+# 2.- Disparo
+for (i in 1:length( datos_p$Ip)){
+  
+  if ( datos_p$Ip[i] > Ilim){
+    disparo_actual <- td( datos_p$Ip[i], Ia=Ilim)
+    
+    if( alarma[i-1]>0){
+      disparo[i] <- min( c( disparo_actual, disparo[i-1]-1))  
+    } else{
+      disparo[i] <- min( c( disparo_actual, 600))
+    }
+    
+    
+    if( (disparo[i]>(0.0)) & (disparo[i]<2.0) ){
+      disparo[i] <- 1.5
+      alarma[i] <- 2.0
+    } 
+    if ( disparo[i]>2.0){
+      alarma[i] <- 1.0
+    }
+    
+      
+  } else {
+    disparo[i] <- (-1.0)
+    alarma[i] <- 0.0
+  }
+}
+
+@
+
+La figura \ref{fig:alarma_t} muestra la evolución temporal de la señal de disparo durante todo el periodo de interés.
+
+<<alarma_t, fig.lp="fig:", dev='png' , fig.width=5, fig.height=3, fig.cap="Evolución temporal de la señal de alarma", fig.pos="h!", echo=FALSE, warning=FALSE>>=
+
+datos_rele <- data.frame( tiempo, alarma, disparo)
+ggplot( datos_rele, aes(x=tiempo, y=alarma)) + 
+  geom_point( shape=1) +
+  # title="Evolución de la potencia reactiva total en 55 kV -velocidad reducida un 10%-",
+  labs(x = "tiempo",
+       y = "alarma [0-ok; 1-pre; 2-disp]")
+
+@
+
+
+<<filtra_alarma,echo=FALSE, results='hide',warning=FALSE>>=
+
+datos_rele_filtrados <- datos_rele[ alarma > 1,]
+datos_rele_filtrados
+@
+
+
+\newpage
+
+\section{Escenario de máximos en laminación y acería no sincronizados}
+
+El objetivo de este apartado es considerar la hipótesis de que los valores máximos de demanda en la acería y el tren de laminación se producen de forma síncrona en el tiempo.
+El análisis se realiza buscando los valores máximos de intensidad en el tren de laminación y acería y superponiéndolos.
+
+
+<<max_sincro,echo=TRUE,warning=FALSE>>=
+
+I1amax <- max( datosI$I1a)
+I1bmax <- max( datosI$I1b)
+I1cmax <- max( datosI$I1c)
+I1max <- max( c(I1amax, I1bmax, I1cmax))
+
+I2amax = max( datosI$I2a)
+I2bmax = max( datosI$I2a)
+I2cmax = max( datosI$I2a)
+I2max = max( c(I2amax, I2bmax, I2cmax))
+
+Imax <- I1max + I2max
+
+contador <- length( datosI$I1a)
+I1 <- rep( NA, contador)
+I2 <- rep( NA, contador)
+for (i in 1:contador){
+  I1[i] <- max( c( datosI$I1a[i], datosI$I1b[i], datosI$I1c[i]))
+  I2[i] <- max( c( datosI$I2a[i], datosI$I2b[i], datosI$I2c[i]))  
+}
+
+I1max95 <- round(quantile( I1, probs=c(0.95)),1)
+I1max97 <- round(quantile( I1, probs=c(0.97)),1)
+I1max99 <- round(quantile( I1, probs=c(0.99)),1)
+I1max999 <- round(quantile( I1, probs=c(0.999)),1)
+I1max <- round( max(I1),1)
+
+I2max95 <- round(quantile( I2, probs=c(0.95)),1)
+I2max97 <- round(quantile( I2, probs=c(0.97)),1)
+I2max99 <- round(quantile( I2, probs=c(0.99)),1)
+I2max999 <- round(quantile( I2, probs=c(0.999)),1)
+I2max <- round( max(I2),1)
+
+Imax95 <- I1max95 + I2max95
+Imax97 <- I1max97 + I2max97
+Imax99 <- I1max99 + I2max99
+Imax999 <- I1max999 + I2max999
+Imax <- I1max+I2max
+@
+
+La intensidad máxima en la acería fue de \Sexpr{ round( I1max,1)} [A], mientras que en el tren de laminación el valor máximo absoluto obtenida durante el periodo de medida fue de \Sexpr{ round( I2max,1)} [A]. La intensidad máxima total considerando coincidencia de los valores máximos fue de \Sexpr{ round( Imax,1)} [A].
+
+Considerando el mismo escenario con percentiles, los resultados son los siguientes:
+
+
+\begin{description}
+  \item[Acería:] \hfill \\ 
+  
+   \begin{description}
+    \item[Percentil $95\%$ de $I1_{max}$:] \Sexpr{ I1max95} A. 
+    \item[Percentil $97\%$ de $I1_{max}$:] \Sexpr{ I1max97} A. 
+    \item[Percentil $99\%$ de $I1_{max}$:] \Sexpr{ I1max99} A. 
+    \item[Percentil $99,9\%$ de $I1_{max}$:] \Sexpr{ I1max999} A.     
+    \item[$I1_{max}$:] \Sexpr{ I1max} A. 
+  \end{description}
+
+  \item[Laminación:] \hfill \\
+  
+  \begin{description}
+    \item[Percentil $95\%$ de $I2_{max}$:] \Sexpr{ I2max95} A.   
+    \item[Percentil $97\%$ de $I2_{max}$:] \Sexpr{ I2max97} A.   
+    \item[Percentil $99\%$ de $I2_{max}$:] \Sexpr{ I2max99} A.
+    \item[Percentil $99,9\%$ de $I2_{max}$:] \Sexpr{ I2max999} A.    
+    \item[$I2_{max}$:] \Sexpr{ I2max} A.     
+  \end{description}
+
+  \item[Percentil $95\%$ de $I_{total,max}$:] \Sexpr{ Imax95} A.     
+  \item[Percentil $97\%$ de $I_{total,max}$:] \Sexpr{ Imax97} A.     
+  \item[Percentil $99\%$ de $I_{total,max}$:] \Sexpr{ Imax99} A.       
+  \item[Percentil $99,9\%$ de $I_{total,max}$:] \Sexpr{ Imax999} A. 
+  
+    \item[$I_{total,max}$:] \Sexpr{ Imax} A. 
+  
+\end{description}
+
+
+En relación con los valores máximos registrados en el tren de laminación se muestra, a continuación, un listado con los 45 valores absolutos máximos registrados ordenados de forma decreciente. El intervalo de muestreo es de \Sexpr{ as.integer( difftime( datos$tiempo[2], datos$tiempo[1], units="secs"))} segundos, lo que puede interpretarse como que cada valor ha estado presente un máximo de \Sexpr{ as.integer( difftime( datos$tiempo[2], datos$tiempo[1], units="secs"))} segundos:
+
+<<max_laminacion, echo=TRUE, results='asis'>>=
+# ordena la lista de valores de intensidad de laminación en orden decreciente
+
+Ilam = sort( I2, decreasing = TRUE)
+Ilam[1:15]
+Ilam[16:30]
+Ilam[31:45]
+
+@
+
+
+
+
+\end{document}
+
