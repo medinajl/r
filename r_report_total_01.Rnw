@@ -330,6 +330,7 @@ El cálculo de la intensidad de línea agregada se realiza utilizando la metodolog
   \item Se obtiene la intensidad de línea $I_L = \frac{S_{total}}{\sqrt{3}V_L}$ considerando un escenario equilibrado. La tensión de línea $V_L$ se calcula como el promedio de las tres tensiones de línea medidas en cada periodo.
 \end{enumerate}
 
+Nuevo añadido al fichero original...
 
 \section{Resultados}
 
