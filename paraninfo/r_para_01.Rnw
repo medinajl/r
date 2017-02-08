@@ -1,0 +1,215 @@
+\documentclass{article}
+
+\usepackage[latin1]{inputenc} % latin1
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+
+
+\begin{document}
+\title{Preparando un paper con R y Knitr}
+\author{Mario Mañana Canteli}
+\maketitle
+
+
+<<setup, include=FALSE, cache=FALSE>>=
+library(knitr)
+# set global chunk options
+opts_chunk$set(comment=NA,  fig.path='figure/minimal-', fig.align='center', fig.show='hold')
+hook_output <- knit_hooks$get("output")
+knit_hooks$set(output=function(x, options)
+{
+  if (options$results != "asis")
+  {
+    # Split string into separate lines.
+    x <- unlist(stringr::str_split(x, "nn"))
+    # Truncate each line to length specified.
+    if (!is.null(m <- options$out.truncate))
+    {
+      len <- nchar(x)
+      x[len>m] <- paste0(substr(x[len>m], 0, m-3), "...")
+    }
+    # Paste lines back together.
+    x <- paste(x, collapse="nn")
+    # Continue with any other output hooks
+  }
+  hook_output(x, options)
+})
+@
+
+
+
+<<calcula_ocupacion, include=FALSE, cache=FALSE>>=
+
+# Acceso al JDK. Necesario para acceder a ficheros excel
+options(java.home="C:\\Program Files\\Java\\jdk1.8.0_92\\")
+Sys.setenv(JAVA_HOME="C:\\Program Files\\Java\\jdk1.8.0_92\\")
+
+# Paquetes necesarios para el análisis
+library(XLConnect)
+library(ggplot2)
+library(extrafont)
+library(pracma)
+library(lubridate)
+library(rJava)
+
+
+# Ruta absoluta al fichero de registros
+fichero <- "C:/mario/docencia/reproducible_research/r/paraninfo/para_01.xlsx"
+# Título de la gráfica
+titulo <- "sabado 28/5"
+# Fila de inicio de datos
+fila_inicio <- 7
+# Fila de fin de datos
+fila_fin <- 3807
+
+# Hoja de análisis
+hoja <- 1
+datos <- readWorksheetFromFile( fichero, sheet=hoja, startRow=fila_inicio, startCol=1, endRow=fila_fin, endCol=18, header=TRUE)
+
+Fecha<-datos$Fecha
+Hora<-datos$Hora
+entradasalida=datos$Col6
+listadni=datos$Col17
+evento=datos$Evento
+N=length( entradasalida)
+temporalesDNI <- rep( NA, N)
+evo <- rep( NA, N)
+x <- as.POSIXct(rep(NA, N))
+x_h <- as.POSIXct(rep(NA, N))
+entradas <- rep( NA, N)
+salidas <- rep( NA, N)
+
+entradas=0
+salidas=0
+neto=0
+otros=0
+indexDNI=0
+for (h in 1:N){
+  
+  diah<-Fecha[h]
+  horah<-Hora[h]
+  fechatotal<-paste(diah,horah, sep=" ")
+  horatotal<-paste("1/1/71",horah, sep=" ")
+  x[h]<-as.POSIXct( fechatotal, format = "%d/%m/%y %H:%M:%S")
+  x_h[h]<-as.POSIXct( horatotal, format = "%d/%m/%y %H:%M:%S")
+  
+  ES=entradasalida[h]
+  EVE=evento[h]
+  DNI=listadni[h]
+  if( strcmp( ES, 'Entrada Derecha Planta -1')==TRUE ){  # entrada
+    if( (DNI %in% temporalesDNI)==TRUE){
+      print(DNI)
+      f <- match( DNI, temporalesDNI)
+      temporalesDNI[f] <- 'x'
+      evo[h] <- neto
+    }
+    else{
+      neto <- neto+1
+      evo[h] <- neto
+      entradas <- entradas+1    
+    }
+  }
+  else if( strcmp( ES, 'Entrada Izquierda Planta -1')==TRUE ){ # entrada
+    if( (DNI %in% temporalesDNI)==TRUE){
+      print(DNI)
+      f <- match( DNI, temporalesDNI)
+      temporalesDNI[f] <- 'x'
+      evo[h] <- neto
+    }
+    else{
+      neto <- neto+1
+      evo[h] <- neto
+      entradas <- entradas+1    
+    }
+  }
+  else if( strcmp( ES, 'Salida Derecha Planta -1')==TRUE ){ # salida
+    if( strcmp( EVE, 'Salida Temporal')==TRUE){
+      indexDNI<-indexDNI+1
+      temporalesDNI[indexDNI]=DNI
+      evo[h] <- neto
+    }
+    else{
+      
+      if( (DNI %in% temporalesDNI)==TRUE){
+        print(DNI)
+        f <- match( DNI, temporalesDNI)
+        temporalesDNI[f] <- 'x'
+      }
+
+      neto <- neto-1
+      evo[h] <- neto
+      salidas <- salidas+1
+    }
+  }
+  else if( strcmp( ES, 'Salida Izquierda Planta -1')==TRUE ){ # salida
+     if( strcmp( EVE, 'Salida Temporal')==TRUE){
+      indexDNI<-indexDNI+1
+      temporalesDNI[indexDNI]=DNI
+      evo[h] <- neto
+    }
+    else{
+
+      if( (DNI %in% temporalesDNI)==TRUE){
+        print(DNI)
+        f <- match( DNI, temporalesDNI)
+        temporalesDNI[f] <- 'x'
+      }
+      
+      neto <- neto-1
+      evo[h] <- neto
+      salidas <- salidas+1
+    }
+  }
+  else{
+    evo[h] <- neto
+    otros <- otros+1
+  }
+}
+
+
+@
+
+
+Este informe analiza la evolución de la ocupación de la planta +1 de la biblioteca del Paraninfo de la UC el día \Sexpr{Fecha[1]}.
+
+El análisis se realiza utilizando un procedimiento \textbf{infalible} diseñado por la NASA. En la figura \ref{fig:ocupacion} se resume el nivel de ocupación.
+
+\vspace{5mm}
+
+
+
+<<grafica_ocupacion, echo=FALSE, cache=TRUE, fig.width=4, fig.height=3, fig.align='center', warning=FALSE, error=FALSE, message=FALSE, results='hide' >>=
+
+pdf('evo.pdf',width=6,height=4,paper='special') 
+# Muestra el porcentaje horario de ocupación considerando 180 plazas
+evo = evo*100.0/180.0
+md <- data.frame( tiempo=x, tiempo_h=x_h, ocupacion=evo)
+require(ggplot2)
+require(scales)
+theme_set(theme_bw()) # Define formato de la gráfica
+ggplot(aes(x = tiempo, y = ocupacion), data = md) + 
+  geom_line() + 
+  xlab("hora") +
+  ylab("Porcentaje de ocupacion Planta -1 [%]") + 
+  ggtitle(titulo)
+
+dev.off()
+
+@
+
+
+\begin{figure}[h!]
+	\centering
+		\includegraphics[width=8cm]{evo.pdf}
+	\caption{Evolución temporal del nivel de ocupación en el Paraninfo}
+	\label{fig:ocupacion}
+\end{figure}
+
+
+\vspace{5mm}
+
+El valor máximo de ocupación ha sido del \Sexpr{ round( max(evo), 2)}\%, con una ocupación media del \Sexpr{ round( mean(evo), 2)}\%.
+
+
+
+\end{document}
